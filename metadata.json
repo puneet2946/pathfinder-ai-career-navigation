@@ -1,0 +1,8 @@
+{
+  "name": "Pathfinder",
+  "description": "Pathfinder helps students overcome career confusion by generating personalized learning plans, identifying skill gaps, recommending projects, and providing internship strategies using Google's Gemini API.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
