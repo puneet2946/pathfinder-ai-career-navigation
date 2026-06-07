@@ -544,11 +544,6 @@ async function startServer() {
   const apiKey = process.env.GEMINI_API_KEY;
   const ai = new GoogleGenAI({
     apiKey: apiKey || "",
-    httpOptions: {
-      headers: {
-        "User-Agent": "aistudio-build",
-      },
-    },
   });
 
   // Health endpoint
