@@ -140,4 +140,4 @@ The application will now be running and accessible locally at [http://localhost:
 
 ## Author
 
-Puneet
+Puneet Kumar

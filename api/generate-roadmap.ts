@@ -1,10 +1,4 @@
-import express from "express";
-import path from "path";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
-import dotenv from "dotenv";
-
-dotenv.config();
 
 // Resilient Markdown-to-JSON Parser
 function parseMarkdownToJSON(markdown: string) {
@@ -534,37 +528,44 @@ function parseMarkdownToJSON(markdown: string) {
   };
 }
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+export default async function handler(req: any, res: any) {
+  // Handle CORS and flight checks if required by browser client
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  app.use(express.json({ limit: "10mb" }));
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
 
-  // Initialize Gemini client with server-side key protection
-  const apiKey = process.env.GEMINI_API_KEY;
-  const ai = new GoogleGenAI({
-    apiKey: apiKey || "",
-  });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed. Only POST request is supported." });
+  }
 
-  // Health endpoint
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", hasApiKey: !!apiKey });
-  });
+  try {
+    let body = req.body;
+    if (typeof body === "string") {
+      body = JSON.parse(body);
+    }
 
-  // AI Roadmap generation endpoint
-  app.post("/api/generate-roadmap", async (req, res) => {
-    try {
-      const { stage, careerGoal, skills, time, preference, region } = req.body;
+    const { stage, careerGoal, skills, time, preference, region } = body || {};
 
-      if (!stage || !careerGoal) {
-        return res.status(400).json({ error: "Academic Stage and Target Career are required." });
-      }
+    if (!stage || !careerGoal) {
+      return res.status(400).json({ error: "Academic Stage and Target Career are required." });
+    }
 
-      if (!apiKey) {
-        return res.status(500).json({ error: "Gemini API key is not configured in settings." });
-      }
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "Gemini API key is not configured in environment variables." });
+    }
 
-      const prompt = `
+    // Initialize state-of-the-art GoogleGenAI client with key from environment
+    const ai = new GoogleGenAI({
+      apiKey: apiKey,
+    });
+
+    const prompt = `
 Generate an honest, highly realistic, and hyper-personalized career navigation blueprint for a student with this profile:
 - **Current Academic Stage**: ${stage}
 - **Target Career Goal**: ${careerGoal}
@@ -668,7 +669,7 @@ Fastest Path to Job Ready: [Veterans advice on fastest strategy to build live pr
 * [Core Focus Area] | [Actionable execution detail]
 `;
 
-      const systemInstruction = `You are Pathfinder: a hard-boiled veteran senior software engineer, direct hiring manager, and realistic career mentor.
+    const systemInstruction = `You are Pathfinder: a hard-boiled veteran senior software engineer, direct hiring manager, and realistic career mentor.
 Your job is to cut through the noise and give students the absolute truth about what it takes to get hired. 
 
 CRITICAL DIRECTIVES & CONSTRAINTS:
@@ -678,47 +679,25 @@ CRITICAL DIRECTIVES & CONSTRAINTS:
 - Treat every response with technical precision: specify what real recruiters scan for on GitHub portfolios, what code patterns excite seniors, and how candidates bypass HR filtering.
 - Address local student struggles globally: keep recommendations useful globally, but acknowledge resource limitations, off-campus placement season timing, or high competition environments.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction,
-          temperature: 0.2,
-        },
-      });
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        systemInstruction,
+        temperature: 0.2,
+      },
+    });
 
-      const responseText = response.text;
-      if (!responseText) {
-        throw new Error("No text response from Gemini API.");
-      }
-
-      const parsedJSON = parseMarkdownToJSON(responseText);
-      res.json(parsedJSON);
-
-    } catch (error: any) {
-      console.error("Error generating roadmap:", error);
-      res.status(500).json({ error: error.message || "Failed to generate roadmap. Please try again." });
+    const responseText = response.text;
+    if (!responseText) {
+      throw new Error("No text response from Gemini API.");
     }
-  });
 
-  // Vite in dev mode, static files in production
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+    const parsedJSON = parseMarkdownToJSON(responseText);
+    return res.status(200).json(parsedJSON);
+
+  } catch (error: any) {
+    console.error("Error generating roadmap:", error);
+    return res.status(500).json({ error: error.message || "Failed to generate roadmap. Please try again." });
   }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server was built successfully. Running on http://localhost:${PORT}`);
-  });
 }
-
-startServer();
