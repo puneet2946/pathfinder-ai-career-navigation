@@ -679,16 +679,15 @@ CRITICAL DIRECTIVES & CONSTRAINTS:
 - Treat every response with technical precision: specify what real recruiters scan for on GitHub portfolios, what code patterns excite seniors, and how candidates bypass HR filtering.
 - Address local student struggles globally: keep recommendations useful globally, but acknowledge resource limitations, off-campus placement season timing, or high competition environments.`;
 
-    // Automatic retry logic if Gemini returns 503 UNAVAILABLE or 429 Rate Limit
-    let attempt = 1;
+    // Automatic fallback model chain for production-grade quota and availability resilience
+    const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"];
     let responseText = "";
-    const maxAttempts = 3;
-    let fallbackModelActive = false;
-    let currentModel = "gemini-3.5-flash";
+    let lastError: any = null;
 
-    while (attempt <= maxAttempts) {
+    for (let i = 0; i < models.length; i++) {
+      const currentModel = models[i];
       try {
-        console.log(`Sending prompt to model: ${currentModel} (Attempt ${attempt}/${maxAttempts})...`);
+        console.log(`Sending prompt to model: ${currentModel} (Chain position ${i + 1}/${models.length})...`);
         const response = await ai.models.generateContent({
           model: currentModel,
           contents: prompt,
@@ -697,55 +696,54 @@ CRITICAL DIRECTIVES & CONSTRAINTS:
             temperature: 0.2,
           },
         });
+        
         responseText = response.text || "";
         if (responseText) {
+          console.log(`Successfully generated roadmap using model: ${currentModel}`);
           break; // successfully got response
         }
-        throw new Error("No text response from Gemini API.");
+        throw new Error(`Empty text response from model ${currentModel}.`);
       } catch (err: any) {
-        const errTextFor503 = (err?.message || String(err)).toLowerCase();
-        const errStatusFor503 = err?.status || 
-                               err?.statusCode || 
-                               err?.error?.code || 
-                               (err?.message && err.message.includes("503") ? 503 : 0) ||
-                               (err?.message && err.message.includes("429") ? 429 : 0);
+        lastError = err;
+        const errTextForQuota = (err?.message || String(err)).toLowerCase();
+        const errStatusForQuota = err?.status || 
+                                  err?.statusCode || 
+                                  err?.error?.code || 
+                                  (err?.message && err.message.includes("503") ? 503 : 0) ||
+                                  (err?.message && err.message.includes("429") ? 429 : 0);
 
-        const isTransient = errStatusFor503 === 503 || 
-                            errStatusFor503 === "UNAVAILABLE" || 
-                            errStatusFor503 === 429 ||
-                            errStatusFor503 === "RESOURCE_EXHAUSTED" ||
-                            errTextFor503.includes("503") || 
-                            errTextFor503.includes("unavailable") || 
-                            errTextFor503.includes("overloaded") ||
-                            errTextFor503.includes("429") ||
-                            errTextFor503.includes("rate limit") ||
-                            errTextFor503.includes("quota") ||
-                            errTextFor503.includes("limit exceeded") ||
-                            errTextFor503.includes("resource exhausted");
+        const isQuotaOrTransient = errStatusForQuota === 503 || 
+                                   errStatusForQuota === "UNAVAILABLE" || 
+                                   errStatusForQuota === 429 ||
+                                   errStatusForQuota === "RESOURCE_EXHAUSTED" ||
+                                   errTextForQuota.includes("503") || 
+                                   errTextForQuota.includes("unavailable") || 
+                                   errTextForQuota.includes("overloaded") ||
+                                   errTextForQuota.includes("429") ||
+                                   errTextForQuota.includes("rate limit") ||
+                                   errTextForQuota.includes("quota") ||
+                                   errTextForQuota.includes("limit exceeded") ||
+                                   errTextForQuota.includes("resource exhausted");
 
-        if (isTransient && attempt < maxAttempts) {
-          const isQuotaLimit = errStatusFor503 === 429 || 
-                               errStatusFor503 === "RESOURCE_EXHAUSTED" ||
-                               errTextFor503.includes("429") || 
-                               errTextFor503.includes("rate limit") || 
-                               errTextFor503.includes("quota") || 
-                               errTextFor503.includes("limit exceeded") || 
-                               errTextFor503.includes("resource exhausted");
-
-          if (!fallbackModelActive) {
-            console.log(`Model gemini-3.5-flash status busy or unavailable. Automatically redirecting to alternative candidate gemini-3.1-flash-lite...`);
-            currentModel = "gemini-3.1-flash-lite";
-            fallbackModelActive = true;
-          }
-
-          const waitTime = isQuotaLimit ? 500 : (attempt * 2000);
-          console.log(`Candidate redirection status (attempt ${attempt}/${maxAttempts}). Invoking automatic fallback sequence in ${waitTime}ms...`);
-          await new Promise((resolve) => setTimeout(resolve, waitTime));
-          attempt++;
+        if (isQuotaOrTransient && i < models.length - 1) {
+          const nextModel = models[i + 1];
+          console.log(`[QUOTA/UNAVAILABLE RESILIENCE] Model ${currentModel} hit rate/quota limit, overload or high demand. Error detail: ${err?.message || err}.`);
+          console.log(`[QUOTA/UNAVAILABLE RESILIENCE] Silently switching to next fallback candidate in chain: ${nextModel}`);
         } else {
-          throw err; // propagates the error to the outer catch block
+          if (i === models.length - 1) {
+            console.log(`[QUOTA/UNAVAILABLE RESILIENCE] Final fallback model ${currentModel} inside model chain failed.`);
+          } else {
+            console.log(`[QUOTA/UNAVAILABLE RESILIENCE] Non-transient error encountered on model ${currentModel}: ${err?.message || err}. Propagating.`);
+          }
+          throw err;
         }
       }
+    }
+
+    if (!responseText && lastError) {
+      throw lastError;
+    } else if (!responseText) {
+      throw new Error("Unable to get response from any model in the fallback chain.");
     }
 
     const parsedJSON = parseMarkdownToJSON(responseText);
@@ -765,9 +763,9 @@ CRITICAL DIRECTIVES & CONSTRAINTS:
                      (error?.message && error.message.includes("429") ? 429 : 0);
 
     if (errStatus === 503 || errStatus === "UNAVAILABLE" || errText.includes("503") || errText.includes("unavailable") || errText.includes("overloaded")) {
-      errMsg = "Google AI is currently experiencing high demand. Please try again in a few moments.";
+      errMsg = "Service temporarily busy. Please try again shortly.";
     } else if (errStatus === 429 || errStatus === "RESOURCE_EXHAUSTED" || errText.includes("429") || errText.includes("rate limit") || errText.includes("quota") || errText.includes("limit exceeded") || errText.includes("resource exhausted")) {
-      errMsg = "Too many requests are being processed right now. Please wait a moment and try again.";
+      errMsg = "Service temporarily busy. Please try again shortly.";
     } else if (errText.includes("timeout") || errText.includes("time out") || errText.includes("network") || errText.includes("fetch") || errText.includes("connect") || errText.includes("abort") || errText.includes("etimedout") || errText.includes("econnrefused")) {
       errMsg = "Unable to connect to the AI service. Please check your connection and try again.";
     }
