@@ -71,10 +71,8 @@ const WEEKLY_COMMITMENTS = [
 
 const LOADING_PHRASES = [
   "Analyzing profile...",
-  "Understanding goals...",
   "Identifying skill gaps...",
-  "Designing roadmap...",
-  "Preparing career strategy..."
+  "Generating personalized roadmap..."
 ];
 
 export default function App() {
@@ -144,16 +142,46 @@ export default function App() {
       });
 
       if (!response.ok) {
-        const errorVal = await response.json();
-        throw new Error(errorVal.error || "Unexpected response from regional server.");
+        let errMsg = "Something went wrong while generating your roadmap. Please try again.";
+        try {
+          const errorVal = await response.json();
+          errMsg = errorVal.error || errMsg;
+        } catch (parseErr) {
+          const statusTextLower = (response.statusText || "").toLowerCase();
+          if (response.status === 503 || statusTextLower.includes("unavailable") || statusTextLower.includes("overloaded")) {
+            errMsg = "Google AI is currently experiencing high demand. Please try again in a few moments.";
+          } else if (response.status === 429 || statusTextLower.includes("rate limit") || statusTextLower.includes("too many requests")) {
+            errMsg = "Too many requests are being processed right now. Please wait a moment and try again.";
+          } else if (response.status === 504 || response.status === 502 || statusTextLower.includes("timeout") || statusTextLower.includes("gateway")) {
+            errMsg = "Unable to connect to the AI service. Please check your connection and try again.";
+          }
+        }
+        throw new Error(errMsg);
       }
 
       const parsedData = await response.json();
+      
+      // Handle the serverless function wrapped error payload inside 200 OK responses
+      if (parsedData && parsedData.error) {
+        throw new Error(parsedData.error);
+      }
+
       setRoadmapData(parsedData);
       setHasRoadmap(true);
     } catch (err: any) {
-      console.error(err);
-      setErrorStatus(err.message || "Failed to formulate career blueprint. Please check parameters and try again.");
+      console.error("Client side generate roadmap error:", err);
+      let displayError = err.message || "Something went wrong while generating your roadmap. Please try again.";
+      const errText = displayError.toLowerCase();
+      if (errText.includes("failed to fetch") || 
+          errText.includes("network error") || 
+          errText.includes("timeout") || 
+          errText.includes("fetch") || 
+          errText.includes("unexpected token") || 
+          errText.includes("is not valid json") || 
+          errText.includes("json parse")) {
+        displayError = "Unable to connect to the AI service. Please check your connection and try again.";
+      }
+      setErrorStatus(displayError);
     } finally {
       setLoading(false);
     }

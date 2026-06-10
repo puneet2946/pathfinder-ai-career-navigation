@@ -540,7 +540,7 @@ export default async function handler(req: any, res: any) {
   }
 
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed. Only POST request is supported." });
+    return res.status(200).json({ error: "Method not allowed. Only POST request is supported." });
   }
 
   try {
@@ -552,12 +552,12 @@ export default async function handler(req: any, res: any) {
     const { stage, careerGoal, skills, time, preference, region } = body || {};
 
     if (!stage || !careerGoal) {
-      return res.status(400).json({ error: "Academic Stage and Target Career are required." });
+      return res.status(200).json({ error: "Academic Stage and Target Career are required." });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: "Gemini API key is not configured in environment variables." });
+      return res.status(200).json({ error: "Gemini API key is not configured in environment variables." });
     }
 
     // Initialize state-of-the-art GoogleGenAI client with key from environment
@@ -679,25 +679,100 @@ CRITICAL DIRECTIVES & CONSTRAINTS:
 - Treat every response with technical precision: specify what real recruiters scan for on GitHub portfolios, what code patterns excite seniors, and how candidates bypass HR filtering.
 - Address local student struggles globally: keep recommendations useful globally, but acknowledge resource limitations, off-campus placement season timing, or high competition environments.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
-        systemInstruction,
-        temperature: 0.2,
-      },
-    });
+    // Automatic retry logic if Gemini returns 503 UNAVAILABLE or 429 Rate Limit
+    let attempt = 1;
+    let responseText = "";
+    const maxAttempts = 3;
+    let fallbackModelActive = false;
+    let currentModel = "gemini-3.5-flash";
 
-    const responseText = response.text;
-    if (!responseText) {
-      throw new Error("No text response from Gemini API.");
+    while (attempt <= maxAttempts) {
+      try {
+        console.log(`Sending prompt to model: ${currentModel} (Attempt ${attempt}/${maxAttempts})...`);
+        const response = await ai.models.generateContent({
+          model: currentModel,
+          contents: prompt,
+          config: {
+            systemInstruction,
+            temperature: 0.2,
+          },
+        });
+        responseText = response.text || "";
+        if (responseText) {
+          break; // successfully got response
+        }
+        throw new Error("No text response from Gemini API.");
+      } catch (err: any) {
+        const errTextFor503 = (err?.message || String(err)).toLowerCase();
+        const errStatusFor503 = err?.status || 
+                               err?.statusCode || 
+                               err?.error?.code || 
+                               (err?.message && err.message.includes("503") ? 503 : 0) ||
+                               (err?.message && err.message.includes("429") ? 429 : 0);
+
+        const isTransient = errStatusFor503 === 503 || 
+                            errStatusFor503 === "UNAVAILABLE" || 
+                            errStatusFor503 === 429 ||
+                            errStatusFor503 === "RESOURCE_EXHAUSTED" ||
+                            errTextFor503.includes("503") || 
+                            errTextFor503.includes("unavailable") || 
+                            errTextFor503.includes("overloaded") ||
+                            errTextFor503.includes("429") ||
+                            errTextFor503.includes("rate limit") ||
+                            errTextFor503.includes("quota") ||
+                            errTextFor503.includes("limit exceeded") ||
+                            errTextFor503.includes("resource exhausted");
+
+        if (isTransient && attempt < maxAttempts) {
+          const isQuotaLimit = errStatusFor503 === 429 || 
+                               errStatusFor503 === "RESOURCE_EXHAUSTED" ||
+                               errTextFor503.includes("429") || 
+                               errTextFor503.includes("rate limit") || 
+                               errTextFor503.includes("quota") || 
+                               errTextFor503.includes("limit exceeded") || 
+                               errTextFor503.includes("resource exhausted");
+
+          if (!fallbackModelActive) {
+            console.log(`Model gemini-3.5-flash status busy or unavailable. Automatically redirecting to alternative candidate gemini-3.1-flash-lite...`);
+            currentModel = "gemini-3.1-flash-lite";
+            fallbackModelActive = true;
+          }
+
+          const waitTime = isQuotaLimit ? 500 : (attempt * 2000);
+          console.log(`Candidate redirection status (attempt ${attempt}/${maxAttempts}). Invoking automatic fallback sequence in ${waitTime}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
+          attempt++;
+        } else {
+          throw err; // propagates the error to the outer catch block
+        }
+      }
     }
 
     const parsedJSON = parseMarkdownToJSON(responseText);
     return res.status(200).json(parsedJSON);
 
   } catch (error: any) {
-    console.error("Error generating roadmap:", error);
-    return res.status(500).json({ error: error.message || "Failed to generate roadmap. Please try again." });
+    console.log("Roadmap generation status report:", error?.message || error);
+    
+    let errMsg = "Something went wrong while generating your roadmap. Please try again.";
+    const errText = (error?.message || String(error)).toLowerCase();
+    
+    // Safely extract code from standard SDK ApiError properties
+    const errStatus = error?.status || 
+                     error?.statusCode || 
+                     error?.error?.code || 
+                     (error?.message && error.message.includes("503") ? 503 : 0) ||
+                     (error?.message && error.message.includes("429") ? 429 : 0);
+
+    if (errStatus === 503 || errStatus === "UNAVAILABLE" || errText.includes("503") || errText.includes("unavailable") || errText.includes("overloaded")) {
+      errMsg = "Google AI is currently experiencing high demand. Please try again in a few moments.";
+    } else if (errStatus === 429 || errStatus === "RESOURCE_EXHAUSTED" || errText.includes("429") || errText.includes("rate limit") || errText.includes("quota") || errText.includes("limit exceeded") || errText.includes("resource exhausted")) {
+      errMsg = "Too many requests are being processed right now. Please wait a moment and try again.";
+    } else if (errText.includes("timeout") || errText.includes("time out") || errText.includes("network") || errText.includes("fetch") || errText.includes("connect") || errText.includes("abort") || errText.includes("etimedout") || errText.includes("econnrefused")) {
+      errMsg = "Unable to connect to the AI service. Please check your connection and try again.";
+    }
+
+    // Always respond with 200 OK to prevent Nginx proxy / platform from replacing with its own static custom HTML error page
+    return res.status(200).json({ error: errMsg });
   }
 }
