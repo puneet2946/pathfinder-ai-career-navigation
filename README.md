@@ -2,7 +2,7 @@
 
 AI-powered career navigation for students.
 
-Pathfinder helps students identify skill gaps, discover relevant projects, plan internships, and build personalized career roadmaps using Google's Gemini API.
+Pathfinder helps students identify skill gaps, discover relevant projects, plan internships, and build personalised career roadmaps using Google's Gemini API.
 
 ---
 
@@ -131,7 +131,7 @@ The application will now be running and accessible locally at [http://localhost:
 
 ## Future Improvements
 
-* **Resume analysis**: Drag-and-drop resume PDF parses to automatically identify current skillset alignments.
+* **Resume analysis**: Drag-and-drop resume PDF parses to automatically identify current skill set alignments.
 * **Career progress tracking**: Real-time checklist interfaces to cross off roadmap items as you complete them.
 * **Interview preparation modules**: Scenario questions and mock interactive coding playgrounds custom tailored to target careers.
 * **Industry trend integration**: Direct scraping or API hookups mapping live trending skills matching regional job openings.
@@ -140,4 +140,4 @@ The application will now be running and accessible locally at [http://localhost:
 
 ## Author
 
-Puneet Kumar
+Puneet
