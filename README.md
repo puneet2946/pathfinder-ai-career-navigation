@@ -21,7 +21,7 @@ As a result, they:
 
 ## Solution
 
-Pathfinder analyzes:
+Pathfinder analyses:
 
 * Academic stage
 * Current skills
@@ -30,7 +30,7 @@ Pathfinder analyzes:
 
 and generates:
 
-* Personalized learning roadmaps
+* Personalised learning roadmaps
 * Skill gap analysis
 * Recruiter expectations
 * Project recommendations
@@ -43,7 +43,7 @@ using Google's Gemini API.
 
 ## Features
 
-* **Personalized Career Roadmaps**: Phase-by-phase chronological learning pathways tailored to student profiles.
+* ** Personalised Career Roadmaps**: Phase-by-phase chronological learning pathways tailored to student profiles.
 * **Skill Gap Identification**: Contrast current skills with crucial industry-standard targets matching the target career path.
 * **Recruiter Expectations Analysis**: Understand portfolio benchmarks, expected project complexity, and essential core expectations.
 * **Internship Planning**: Actionable cyclical application windows, specific skills milestones, and timeline-based preparation steps.
