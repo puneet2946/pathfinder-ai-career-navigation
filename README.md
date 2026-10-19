@@ -43,7 +43,7 @@ using Google's Gemini API.
 
 ## Features
 
-* ** Personalised Career Roadmaps**: Phase-by-phase chronological learning pathways tailored to student profiles.
+* **Personalised Career Roadmaps**: Phase-by-phase chronological learning pathways tailored to student profiles.
 * **Skill Gap Identification**: Contrast current skills with crucial industry-standard targets matching the target career path.
 * **Recruiter Expectations Analysis**: Understand portfolio benchmarks, expected project complexity, and essential core expectations.
 * **Internship Planning**: Actionable cyclical application windows, specific skills milestones, and timeline-based preparation steps.
